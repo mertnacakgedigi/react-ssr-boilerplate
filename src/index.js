@@ -1,14 +1,35 @@
-import express from "express"
-import renderer from './helpers/renderer'
-const app = express()
-import createStore from './helpers/createStore'
+import 'babel-polyfill';
+import express from 'express';
+import { matchRoutes } from 'react-router-config';
+import proxy from 'express-http-proxy';
+import Routes from './client/Routes';
+import renderer from './helpers/renderer';
+import createStore from './helpers/createStore';
 
-app.use(express.static('public'))
-app.get('*',(req,res)=> {
-    const store = createStore()
-    res.send(renderer(req,store));
-})
+const app = express();
+
+app.use(
+  '/api',
+  proxy('http://react-ssr-api.herokuapp.com', {
+    proxyReqOptDecorator(opts) {
+      opts.headers['x-forwarded-host'] = 'localhost:3000';
+      return opts;
+    }
+  })
+);
+app.use(express.static('public'));
+app.get('*', (req, res) => {
+  const store = createStore(req);
+
+  const promises = matchRoutes(Routes, req.path).map(({ route }) => {
+    return route.loadData ? route.loadData(store) : null;
+  });
+
+  Promise.all(promises).then(() => {
+    res.send(renderer(req, store));
+  });
+});
 
 app.listen(3000, () => {
-    console.log("Hey")
-})
+  console.log('Listening on prot 3000');
+});
